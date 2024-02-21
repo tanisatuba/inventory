@@ -27,7 +27,7 @@ public class SingleBillResponse {
   public static SingleBillResponse from(OrderMaster orderMaster, Double sales, Double due) {
     SingleBillResponse.SingleBillResponseBuilder builder = SingleBillResponse.builder()
             .customerId(orderMaster.getCustomer().getCustomerId())
-            .customer(orderMaster.getCustomer().getCompany())
+            .customer(orderMaster.getCustomer().getCustomerName())
             .orderId(orderMaster.getOrderId())
             .orderDate(DateUtil.getFormattedDate(orderMaster.getOrderDate()))
             .company(orderMaster.getCompanyName())
