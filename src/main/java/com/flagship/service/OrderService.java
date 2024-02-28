@@ -8,7 +8,7 @@ import java.util.List;
 public interface OrderService {
   OrderResponse createOrder(OrderMasterRequest orderMasterRequest);
 
-  ChallanResponse getLastInvoice();
+  ChallanResponse getLastInvoice(String company);
 
   UomAndAvailableResponse getUomAndAvailable(String product, String shipment);
 
@@ -51,4 +51,6 @@ public interface OrderService {
   OrderRequisitionResponse getRequisition(Long serial);
 
   OrderWarehouseResponse getAllWarehouse(String product, Long order);
+
+  DeleteResponse deleteOrderDetails(Long order, String product, String warehouse);
 }

@@ -2,6 +2,7 @@ package com.flagship.model.db;
 
 import com.flagship.constant.db.DbConstant.*;
 import com.flagship.constant.enums.OrderStatus;
+import com.flagship.constant.enums.Status;
 import com.flagship.constant.enums.UOM;
 import com.flagship.constant.enums.Warehouse;
 import lombok.*;
@@ -48,6 +49,10 @@ public class OrderDetails implements Serializable {
 
   @Column(name = DbOrderDetails.VAT)
   private Double vat;
+
+  @Enumerated(value = EnumType.STRING)
+  @Column(name = DbOrderDetails.STATUS, nullable = false)
+  private Status orderStatus;
 
   @Enumerated(value = EnumType.STRING)
   @Column(name = DbOrderDetails.UOM, nullable = false)

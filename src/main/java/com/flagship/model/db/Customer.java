@@ -5,6 +5,7 @@ import com.flagship.constant.db.DbConstant.DbCustomer;
 import com.flagship.constant.db.DbConstant.DbSupplier;
 import com.flagship.constant.db.DbConstant.DbUser;
 import com.flagship.constant.enums.CustomerType;
+import com.flagship.constant.enums.Status;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -37,6 +38,10 @@ public class Customer implements Serializable {
 
   @Column(name = DbCustomer.PHONE_NUMBER, nullable = false)
   private String phoneNumber;
+
+  @Enumerated(value = EnumType.STRING)
+  @Column(name = DbCustomer.STATUS, nullable = false)
+  private Status status;
 
   @Enumerated(value = EnumType.STRING)
   @Column(name = DbCustomer.CUSTOMER_TYPE, nullable = false)

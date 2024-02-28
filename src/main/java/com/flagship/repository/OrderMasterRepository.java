@@ -1,5 +1,6 @@
 package com.flagship.repository;
 
+import com.flagship.constant.enums.ChallanCompany;
 import com.flagship.model.db.Customer;
 import com.flagship.model.db.OrderMaster;
 import org.springframework.data.repository.PagingAndSortingRepository;
@@ -27,4 +28,6 @@ public interface OrderMasterRepository extends PagingAndSortingRepository<OrderM
   List<OrderMaster> findByCustomer(Customer customer);
 
   List<OrderMaster> findByOrderByCreatedOnDesc();
+
+  Optional<OrderMaster> findFirstByChallanCompanyOrderByOrderIdDesc(ChallanCompany challanCompany);
 }

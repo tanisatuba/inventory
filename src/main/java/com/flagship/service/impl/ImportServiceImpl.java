@@ -1,5 +1,6 @@
 package com.flagship.service.impl;
 
+import com.flagship.constant.enums.Status;
 import com.flagship.constant.enums.UOM;
 import com.flagship.constant.enums.Warehouse;
 import com.flagship.dto.request.ImportDetailsRequest;
@@ -15,6 +16,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.text.DecimalFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -53,7 +56,7 @@ public class ImportServiceImpl implements ImportService {
     Optional<ImportMaster> optionalImportMaster = importMasterRepository.findByShipmentNo(importRequest.getShipmentNo());
     if (optionalImportMaster.isPresent()) {
       optionalImportMaster.get().setCountry(getCountry(importRequest.getCountry().getValue()));
-      optionalImportMaster.get().setDate(DateUtil.getZoneDateTime(importRequest.getDate() + "T00:00:00"));
+      optionalImportMaster.get().setDate(DateUtil.getZoneDateTime(dateConversion(importRequest.getDate())+"T00:00:00"));
       List<ImportDetailsResponse> importDetailsResponseList = saveImportDetails(optionalImportMaster.get(),
               importRequest.getImportDetailsRequestList());
       importMasterRepository.save(optionalImportMaster.get());
@@ -62,13 +65,23 @@ public class ImportServiceImpl implements ImportService {
       ImportMaster importMaster = new ImportMaster();
       importMaster.setShipmentNo(importRequest.getShipmentNo());
       importMaster.setCountry(getCountry(importRequest.getCountry().getValue()));
-      importMaster.setDate(DateUtil.getZoneDateTime(importRequest.getDate() + "T00:00:00"));
+      importMaster.setDate(DateUtil.getZoneDateTime(dateConversion(importRequest.getDate()) + "T00:00:00"));
       importMaster.setCreatedBy(getUser(importRequest.getUser()));
       ImportMaster saveImportMaster = importMasterRepository.save(importMaster);
       List<ImportDetailsResponse> importDetailsResponseList = saveImportDetails(saveImportMaster,
               importRequest.getImportDetailsRequestList());
       return ImportResponse.from("Import Added Successfully", importMaster, importDetailsResponseList);
     }
+  }
+
+  private String dateConversion(String date) {
+    DateTimeFormatter originalFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    LocalDate parsedDate = LocalDate.parse(date, originalFormatter);
+
+    // Format the LocalDate object using the new format "MM-dd-yyyy"
+    DateTimeFormatter newFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    System.out.println(parsedDate.format(newFormatter));
+    return parsedDate.format(newFormatter);
   }
 
   @Override
@@ -92,7 +105,9 @@ public class ImportServiceImpl implements ImportService {
     for (ImportMaster importMaster : importMasterList) {
       List<ImportDetails> importDetailsList = importDetailsRepository.findByImportMaster(importMaster);
       for (ImportDetails importDetails : importDetailsList) {
-        importResponseList.add(SingleImportResponse.from(importMaster, importDetails));
+        if(importDetails.getStatus().equals(Status.ACTIVE)) {
+          importResponseList.add(SingleImportResponse.from(importMaster, importDetails));
+        }
       }
     }
     return AllImportResponse.from(importResponseList);
@@ -234,6 +249,7 @@ public class ImportServiceImpl implements ImportService {
         importDetails.get().setTotal(importDetails.get().getTotal() - (importDetails.get().getPrice() *
                 moveRequest.getQuantity()));
         move.setCreatedBy(getUser(moveRequest.getUser()));
+        move.setStatus(Status.ACTIVE);
         importDetailsRepository.save(move);
         importDetailsRepository.save(importDetails.get());
         importDetailsResponseList.add(ImportDetailsResponse.from(move));
@@ -243,6 +259,45 @@ public class ImportServiceImpl implements ImportService {
     }
     ImportMaster importMaster = getImportMaster(moveRequestList.get(0).getShipment().getValue());
     return ImportResponse.from("Product move successfully", importMaster, importDetailsResponseList);
+  }
+
+  @Override
+  public DeleteResponse deleteProduct(String product, String shipment, String warehouse) {
+    Optional<ImportDetails> optionalImportDetails = importDetailsRepository.findByProductAndImportMasterAndWarehouse(
+            getProducts(product), getImportMaster(shipment), Warehouse.valueOf(warehouse));
+    if(optionalImportDetails.isPresent()){
+      optionalImportDetails.get().setStatus(Status.INACTIVE);
+      importDetailsRepository.save(optionalImportDetails.get());
+      updateStockWhenDelete(optionalImportDetails.get());
+      return DeleteResponse.from();
+    }else {
+      throw new RequestValidationException("Product details not found");
+    }
+  }
+
+  private void updateStockWhenDelete(ImportDetails importDetails) {
+    Optional<Stock> optionalStock = stockRepository.findByProduct(importDetails.getProduct());
+    if(optionalStock.isPresent()){
+      if(importDetails.getUom().equals(UOM.LT)){
+        optionalStock.get().setTotalBuy(optionalStock.get().getTotalBuy() - importDetails.getKgLt());
+        optionalStock.get().setInStock(optionalStock.get().getInStock() - importDetails.getKgLt());
+      }
+      else if(importDetails.getUom().equals(UOM.KG)){
+        optionalStock.get().setTotalBuy(optionalStock.get().getTotalBuy() - importDetails.getKgLt());
+        optionalStock.get().setInStock(optionalStock.get().getInStock() - importDetails.getKgLt());
+      }
+      else if(importDetails.getUom().equals(UOM.PIECE)){
+        optionalStock.get().setTotalBuy(optionalStock.get().getTotalBuy() - importDetails.getPiece());
+        optionalStock.get().setInStock(optionalStock.get().getInStock() - importDetails.getPiece());
+      }
+      else {
+        optionalStock.get().setTotalBuy(optionalStock.get().getTotalBuy() - importDetails.getCartoon());
+        optionalStock.get().setInStock(optionalStock.get().getInStock() - importDetails.getCartoon());
+      }
+      stockRepository.save(optionalStock.get());
+    }else {
+      throw new RequestValidationException("Product not found in stock");
+    }
   }
 
   private ImportMaster getImportMaster(String shipment) {
@@ -275,7 +330,6 @@ public class ImportServiceImpl implements ImportService {
     List<ImportDetails> importDetailsList = new ArrayList<>();
     for (ImportDetailsRequest importDetailsRequest : importDetailsRequestList) {
       importDetailsRequest.validate();
-
       ImportDetails importDetails = new ImportDetails();
       importDetails.setImportMaster(saveImportMaster);
       importDetails.setProduct(getProducts(importDetailsRequest.getProduct().getValue()));
@@ -283,11 +337,11 @@ public class ImportServiceImpl implements ImportService {
       importDetails.setBrand(getBrand(importDetailsRequest.getBrand().getValue()));
       importDetails.setCountry(getCountry(importDetailsRequest.getImportCountry().getValue()));
       if (importDetailsRequest.getProduction() != null && !importDetailsRequest.getProduction().isEmpty()) {
-        importDetails.setProduction(DateUtil.getZoneDateTime(importDetailsRequest.getProduction() + "T00:00:00"));
+        importDetails.setProduction(DateUtil.getZoneDateTime(dateConversion(importDetailsRequest.getProduction()) + "T00:00:00"));
       }
       importDetails.setWarehouse(Warehouse.fromName(importDetailsRequest.getWarehouse().getName()));
       if (importDetailsRequest.getExpire() != null && !importDetailsRequest.getExpire().isEmpty()) {
-        importDetails.setExpire(DateUtil.getZoneDateTime(importDetailsRequest.getExpire() + "T00:00:00"));
+        importDetails.setExpire(DateUtil.getZoneDateTime(dateConversion(importDetailsRequest.getExpire()) + "T00:00:00"));
       }
       importDetails.setUnitCartoon(Double.parseDouble(decimalFormat.format(importDetailsRequest.getKgLt() /
               importDetailsRequest.getCartoon())));
@@ -300,6 +354,7 @@ public class ImportServiceImpl implements ImportService {
       importDetails.setPrice(Double.parseDouble(decimalFormat.format(importDetailsRequest.getPrice())));
       importDetails.setTotal(Double.parseDouble(decimalFormat.format(importDetailsRequest.getTotal())));
       importDetails.setCreatedBy(saveImportMaster.getCreatedBy());
+      importDetails.setStatus(Status.ACTIVE);
       importDetailsList.add(importDetails);
       importDetailsResponseList.add(ImportDetailsResponse.from(importDetails));
     }

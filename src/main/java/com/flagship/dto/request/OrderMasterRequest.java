@@ -1,5 +1,6 @@
 package com.flagship.dto.request;
 
+import com.flagship.constant.enums.ChallanCompany;
 import com.flagship.constant.enums.CustomerType;
 import lombok.Data;
 
@@ -30,6 +31,7 @@ public class OrderMasterRequest {
   @NotEmpty
   private String deliveryDate;
   private Integer creditTerm;
+  private ChallanCompany challanCompany;
   private Integer challanNo;
   private String binNo;
   @Valid

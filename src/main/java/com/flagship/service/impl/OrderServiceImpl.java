@@ -1,9 +1,6 @@
 package com.flagship.service.impl;
 
-import com.flagship.constant.enums.CustomerType;
-import com.flagship.constant.enums.OrderStatus;
-import com.flagship.constant.enums.UOM;
-import com.flagship.constant.enums.Warehouse;
+import com.flagship.constant.enums.*;
 import com.flagship.dto.request.*;
 import com.flagship.dto.response.*;
 import com.flagship.exception.RequestValidationException;
@@ -17,7 +14,9 @@ import org.springframework.stereotype.Service;
 import javax.transaction.Transactional;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -80,13 +79,15 @@ public class OrderServiceImpl implements OrderService {
       }
     }
     orderMaster.setCustomerType(CustomerType.fromName(orderMasterRequest.getCustomerType().getName()));
-    orderMaster.setOrderDate(DateUtil.getZoneDateTime(orderMasterRequest.getOrderDate() + "T00:00:00"));
-    orderMaster.setDeliveryDate(DateUtil.getZoneDateTime(orderMasterRequest.getDeliveryDate() + "T00:00:00"));
+    orderMaster.setOrderDate(DateUtil.getZoneDateTime(dateConversion(orderMasterRequest.getOrderDate()) + "T00:00:00"));
+    orderMaster.setDeliveryDate(DateUtil.getZoneDateTime(dateConversion(orderMasterRequest.getDeliveryDate()) + "T00:00:00"));
     orderMaster.setCreditTerm(orderMasterRequest.getCreditTerm());
-    orderMaster.setChallan(orderMasterRequest.getChallanNo());
+    orderMaster.setChallan(orderMasterRequest.getChallanNo() != null ? orderMasterRequest.getChallanNo() : 0);
     orderMaster.setAddress(orderMasterRequest.getAddress());
     orderMaster.setOrderBy(getSalesPerson(orderMasterRequest.getOrderBy().getValue()));
     orderMaster.setCreatedBy(getUser(orderMasterRequest.getUser()));
+    orderMaster.setChallanCompany(orderMaster.getChallanCompany() != null ? ChallanCompany.fromName(
+            orderMasterRequest.getChallanCompany().getName()) : null);
     OrderMaster master = orderMasterRepository.save(orderMaster);
     List<OrderDetailsResponse> orderDetailsResponses = addOrderDetails(master, orderDetailsRequestList);
     return OrderResponse.from("Order create successfully", orderMaster, orderDetailsResponses);
@@ -118,9 +119,9 @@ public class OrderServiceImpl implements OrderService {
         orderDetails.setVat(orderDetailsRequest.getVat() != null ? Double.parseDouble(decimalFormat.format
                 (orderDetailsRequest.getVat())) : 0.0);
         orderDetails.setUom(UOM.fromName(orderDetailsRequest.getUom().getName()));
-        if(orderDetailsRequest.getDiscount() != null){
+        if (orderDetailsRequest.getDiscount() != null) {
           orderDetails.setDiscount(Double.parseDouble(decimalFormat.format(orderDetailsRequest.getDiscount())));
-        }else{
+        } else {
           orderDetails.setDiscount(0.0);
         }
         orderDetails.setQuantity(Double.parseDouble(decimalFormat.format(orderDetailsRequest.getQuantity() -
@@ -135,6 +136,7 @@ public class OrderServiceImpl implements OrderService {
         }
         orderDetails.setStatus(OrderStatus.PENDING);
         orderDetails.setWarehouse(Warehouse.valueOf(orderDetailsRequest.getWarehouse().getValue()));
+        orderDetails.setOrderStatus(Status.ACTIVE);
         orderDetailsList.add(orderDetails);
         commonRequests.add(orderDetailsRequest.getShipment());
         warehouseList.add(Warehouse.valueOf(orderDetailsRequest.getWarehouse().getValue()));
@@ -180,8 +182,8 @@ public class OrderServiceImpl implements OrderService {
   }
 
   @Override
-  public ChallanResponse getLastInvoice() {
-    Optional<OrderMaster> optionalInvoice = orderMasterRepository.findFirstByOrderByOrderIdDesc();
+  public ChallanResponse getLastInvoice(String company) {
+    Optional<OrderMaster> optionalInvoice = orderMasterRepository.findFirstByChallanCompanyOrderByOrderIdDesc(ChallanCompany.valueOf(company));
     return optionalInvoice.map(ChallanResponse::from).orElse(null);
   }
 
@@ -209,13 +211,13 @@ public class OrderServiceImpl implements OrderService {
     List<OrderMaster> orderMasters = orderMasterRepository.findByOrderByCreatedOnDesc();
     List<SingleBillResponse> singleBillResponses = new ArrayList<>();
     for (OrderMaster orderMaster : orderMasters) {
-      Optional<OrderBills> optionalOrderBills = orderBillsRepository.findFirstByOrderOrderByCreatedOnDesc(orderMaster);
-      if (optionalOrderBills.isPresent()) {
-        singleBillResponses.add(SingleBillResponse.from(orderMaster, optionalOrderBills.get().getSales(),
-                optionalOrderBills.get().getDue()));
-      } else {
-        singleBillResponses.add(SingleBillResponse.from(orderMaster, 0.0,
-                0.0));
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
+      if (!orderDetailsList.isEmpty()) {
+        Optional<OrderBills> optionalOrderBills = orderBillsRepository.findFirstByOrderOrderByCreatedOnDesc(orderMaster);
+        if (optionalOrderBills.isPresent() && optionalOrderBills.get().getSales() > 0) {
+          singleBillResponses.add(SingleBillResponse.from(orderMaster, optionalOrderBills.get().getSales(),
+                  optionalOrderBills.get().getDue()));
+        }
       }
     }
     return AllBillsResponse.from(singleBillResponses);
@@ -225,10 +227,12 @@ public class OrderServiceImpl implements OrderService {
   public BillsDetailsResponse getBillsDetails(Long orderId) {
     Optional<OrderMaster> optionalOrderMaster = orderMasterRepository.findByOrderId(orderId);
     if (optionalOrderMaster.isPresent()) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(optionalOrderMaster.get());
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(optionalOrderMaster.get(), Status.ACTIVE);
       List<SingleBillsDetailsResponse> singleBillsDetailsResponses = new ArrayList<>();
       for (OrderDetails orderDetails : orderDetailsList) {
-        singleBillsDetailsResponses.add(SingleBillsDetailsResponse.from(orderDetails));
+        if (orderDetails.getOrderStatus().equals(Status.ACTIVE)) {
+          singleBillsDetailsResponses.add(SingleBillsDetailsResponse.from(orderDetails));
+        }
       }
       return BillsDetailsResponse.from(SingleBillResponse.from(optionalOrderMaster.get(), 0.0, 0.0), singleBillsDetailsResponses);
     } else {
@@ -240,10 +244,12 @@ public class OrderServiceImpl implements OrderService {
   public VatDetailsResponse getVatDetails(Long orderId) {
     Optional<OrderMaster> optionalOrderMaster = orderMasterRepository.findByOrderId(orderId);
     if (optionalOrderMaster.isPresent()) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(optionalOrderMaster.get());
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(optionalOrderMaster.get(), Status.ACTIVE);
       List<SingleVatDetailsResponse> singleVatDetailsResponses = new ArrayList<>();
       for (OrderDetails orderDetails : orderDetailsList) {
-        singleVatDetailsResponses.add(SingleVatDetailsResponse.from(orderDetails));
+        if (orderDetails.getOrderStatus().equals(Status.ACTIVE)) {
+          singleVatDetailsResponses.add(SingleVatDetailsResponse.from(orderDetails));
+        }
       }
       return VatDetailsResponse.from(SingleBillResponse.from(optionalOrderMaster.get(), 0.0, 0.0), singleVatDetailsResponses);
     } else {
@@ -255,7 +261,7 @@ public class OrderServiceImpl implements OrderService {
   public LastPriceResponse getProductLastPrice(String customer, String product) {
     List<OrderMaster> orderMasters = orderMasterRepository.findByCustomerOrderByCreatedOnDesc(getCustomer(customer));
     for (OrderMaster orderMaster : orderMasters) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(orderMaster);
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
       for (OrderDetails orderDetails : orderDetailsList) {
         if (orderDetails.getProduct().getProductId().equals(product)) {
           return LastPriceResponse.from(orderDetails.getPrice());
@@ -291,9 +297,11 @@ public class OrderServiceImpl implements OrderService {
     }
     List<DailyOrderProductsResponse> productsResponses = new ArrayList<>();
     for (OrderMaster orderMaster : orderMasters) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(orderMaster);
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
       for (OrderDetails orderDetails : orderDetailsList) {
-        productsResponses.add(DailyOrderProductsResponse.from(orderDetails, orderMaster));
+        if (orderDetails.getOrderStatus().equals(Status.ACTIVE)) {
+          productsResponses.add(DailyOrderProductsResponse.from(orderDetails, orderMaster));
+        }
       }
       if (!uniqueCustomers.containsKey(orderMaster.getCustomer().getCustomerName())) {
         uniqueCustomers.put(orderMaster.getCustomer().getCustomerName(), orderMaster.getCustomer().getCustomerName());
@@ -329,7 +337,7 @@ public class OrderServiceImpl implements OrderService {
     }
     List<DailyShortResponse> dailyShortResponses = new ArrayList<>();
     for (OrderMaster orderMaster : orderMasters) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(orderMaster);
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
       for (OrderDetails orderDetails : orderDetailsList) {
         if (!uniqueProducts.containsKey(orderDetails.getProduct().getProductId())) {
           uniqueProducts.put(orderDetails.getProduct().getProductId(), orderDetails.getQuantity());
@@ -352,16 +360,16 @@ public class OrderServiceImpl implements OrderService {
     List<OrderMaster> orderMasters = (List<OrderMaster>) orderMasterRepository.findAll();
     Map<Long, Double> grandTotalMap = new HashMap<>();
     List<SingleOrderTableResponse> singleOrderTableResponses = new ArrayList<>();
-
     for (OrderMaster orderMaster : orderMasters) {
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(orderMaster);
+      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
       double grandTotal = 0.0; // Initialize grandTotal for each orderId
       int i = 1;
       for (OrderDetails orderDetails : orderDetailsList) {
+
         grandTotal += orderDetails.getTotalPrice(); // Assuming getTotalPrice() is the method to get total price
-        if(i <= orderDetailsList.size() - 1){
+        if (i <= orderDetailsList.size() - 1) {
           singleOrderTableResponses.add(SingleOrderTableResponse.from(orderMaster, orderDetails));
-        }else{
+        } else {
           grandTotalMap.put(orderMaster.getId(), grandTotal);
           SingleOrderTableResponse singleOrderTableResponse = SingleOrderTableResponse.from(orderMaster, orderDetails);
           singleOrderTableResponse.setGrandTotal(grandTotalMap.get(orderMaster.getId()));
@@ -370,13 +378,12 @@ public class OrderServiceImpl implements OrderService {
         i++;
       }
     }
-
     return OrderTableResponse.from(singleOrderTableResponses);
   }
 
   @Override
   public EditOrderResponse editOrder(Long orderId, List<EditOrderRequest> updateOrderRequest) {
-    List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(getOrder(orderId));
+    List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(getOrder(orderId), Status.ACTIVE);
     List<OrderDetails> orderDetails1 = new ArrayList<>();
     for (OrderDetails orderDetail : orderDetailsList) {
       EditOrderRequest matchingEditRequest = findMatchingEditRequest(updateOrderRequest,
@@ -394,7 +401,7 @@ public class OrderServiceImpl implements OrderService {
   }
 
   private void updateOrderBills(Long orderId) {
-    List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(getOrder(orderId));
+    List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(getOrder(orderId), Status.ACTIVE);
     double total = 0.0;
     for (OrderDetails orderDetails : orderDetailsList) {
       total = total + orderDetails.getTotalPrice();
@@ -438,7 +445,9 @@ public class OrderServiceImpl implements OrderService {
     for (OrderMaster orderMaster : orderMasters) {
       List<OrderDetails> orderDetailsList = orderDetailsRepository.findByOrderAndStatus(orderMaster, OrderStatus.PENDING);
       for (OrderDetails orderDetails : orderDetailsList) {
-        pendingOrderResponseList.add(PendingOrderResponse.from(orderMaster, orderDetails));
+        if (orderDetails.getOrderStatus().equals(Status.ACTIVE)) {
+          pendingOrderResponseList.add(PendingOrderResponse.from(orderMaster, orderDetails));
+        }
       }
     }
     return AllPendingOrdersResponse.from(pendingOrderResponseList);
@@ -558,8 +567,10 @@ public class OrderServiceImpl implements OrderService {
           due = due + optionalOrderBills.get().getDue();
         }
       }
-      singlePaymentResponses.add(SinglePaymentResponse.from(customer.getCustomerId(), customer.getCustomerName(),
-              customer.getCompany(), due));
+      if(due > 0) {
+        singlePaymentResponses.add(SinglePaymentResponse.from(customer.getCustomerId(), customer.getCustomerName(),
+                customer.getCompany(), due));
+      }
     }
     return AllPaymentsResponse.from(singlePaymentResponses);
   }
@@ -568,37 +579,67 @@ public class OrderServiceImpl implements OrderService {
   public LedgerResponse getAllLedger(String customer) {
     List<OrderMaster> orderMasters = orderMasterRepository.findByCustomer(getCustomer(customer));
     List<AllLedgerResponse> allLedgerResponses = new ArrayList<>();
+    Set<Long> processedOrderIds = new HashSet<>();
     for (OrderMaster orderMaster : orderMasters) {
-      List<OrderBills> orderBillsList = orderBillsRepository.findByOrder(orderMaster);
-      List<SingleLedgerResponse> singleLedgerResponseList = new ArrayList<>();
-      for (OrderBills orderBills : orderBillsList) {
-        singleLedgerResponseList.add(SingleLedgerResponse.from(orderBills));
-      }
-      double discount = 0.0;
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrder(orderMaster);
-      for (OrderDetails orderDetails : orderDetailsList) {
-        discount = discount + (orderDetails.getDiscount() * orderDetails.getPrice());
-      }
-      List<Returns> returnsList = returnsRepository.findByOrder(orderMaster);
-      for (Returns returns : returnsList) {
-        Optional<OrderDetails> optionalOrderDetails = orderDetailsRepository.findByOrderAndProduct(orderMaster,
-                returns.getProduct());
-        if (optionalOrderDetails.isPresent()) {
-          if (optionalOrderDetails.get().getUom().equals(UOM.LT)) {
-            discount = discount + (returns.getKgLt() * optionalOrderDetails.get().getPrice());
-          } else if (optionalOrderDetails.get().getUom().equals(UOM.KG)) {
-            discount = discount + (returns.getKgLt() * optionalOrderDetails.get().getPrice());
-          } else if (optionalOrderDetails.get().getUom().equals(UOM.PIECE)) {
-            discount = discount + (returns.getPiece() * optionalOrderDetails.get().getPrice());
-          } else {
-            discount = discount + (returns.getCartoon() * optionalOrderDetails.get().getPrice());
+      if (!processedOrderIds.contains(orderMaster.getId())) {
+        List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
+        if (!orderDetailsList.isEmpty()) {
+          List<OrderBills> orderBillsList = orderBillsRepository.findByOrder(orderMaster);
+          List<SingleLedgerResponse> singleLedgerResponseList = new ArrayList<>();
+          double totalPayments = 0.0;
+          double totalSales = calculateTotalSales(orderMaster);
+          for (OrderBills orderBills : orderBillsList) {
+            totalPayments = totalPayments + orderBills.getPayment();
+            singleLedgerResponseList.add(SingleLedgerResponse.from(orderBills));
           }
+          double discount = calculateDiscount(orderMaster);
+          allLedgerResponses.add(AllLedgerResponse.from(orderMaster, singleLedgerResponseList, discount, totalSales, totalPayments));
+          processedOrderIds.add(orderMaster.getId());
         }
       }
-      allLedgerResponses.add(AllLedgerResponse.from(orderMaster, singleLedgerResponseList, discount));
     }
     return LedgerResponse.from(allLedgerResponses);
   }
+
+  // Calculate totalSales for an order once
+  private double calculateTotalSales(OrderMaster orderMaster) {
+    Optional<OrderBills> optionalOrderBills = orderBillsRepository.findFirstByOrderOrderByCreatedOnDesc(orderMaster);
+    if (optionalOrderBills.isPresent()) {
+      return optionalOrderBills.get().getSales();
+    }
+    return 0.0;
+  }
+
+  // Calculate discount for an order
+  private double calculateDiscount(OrderMaster orderMaster) {
+    double discount = 0.0;
+    List<OrderDetails> orderDetailsList = orderDetailsRepository.findAllByOrderAndOrderStatus(orderMaster, Status.ACTIVE);
+    for (OrderDetails orderDetails : orderDetailsList) {
+      discount += orderDetails.getDiscount() * orderDetails.getPrice();
+    }
+
+    List<Returns> returnsList = returnsRepository.findByOrder(orderMaster);
+    for (Returns returns : returnsList) {
+      Optional<OrderDetails> optionalOrderDetails = orderDetailsRepository.findByOrderAndProduct(orderMaster,
+              returns.getProduct());
+
+      if (optionalOrderDetails.isPresent()) {
+        double price = optionalOrderDetails.get().getPrice();
+
+        if (optionalOrderDetails.get().getUom().equals(UOM.LT)) {
+          discount += returns.getKgLt() * price;
+        } else if (optionalOrderDetails.get().getUom().equals(UOM.KG)) {
+          discount += returns.getKgLt() * price;
+        } else if (optionalOrderDetails.get().getUom().equals(UOM.PIECE)) {
+          discount += returns.getPiece() * price;
+        } else {
+          discount += returns.getCartoon() * price;
+        }
+      }
+    }
+    return discount;
+  }
+
 
   @Override
   public AllOrderIdResponse getAllOrderId(String product) {
@@ -714,7 +755,7 @@ public class OrderServiceImpl implements OrderService {
       }
     }
     Long serial = getSerial();
-    for(RequisitionResponse requisitionResponse : requisitionResponses){
+    for (RequisitionResponse requisitionResponse : requisitionResponses) {
       Requisition requisition = new Requisition();
       requisition.setSerialNo(serial);
       requisition.setProduct(requisitionResponse.getProduct());
@@ -739,7 +780,7 @@ public class OrderServiceImpl implements OrderService {
     double totalPiece = 0.0;
     double totalKg = 0.0;
     double totalCartoon = 0.0;
-    for(Requisition requisition : requisitionList){
+    for (Requisition requisition : requisitionList) {
       String[] ctnKgLt = requisition.getQuantity().split(" ");
       totalPiece = totalPiece + requisition.getPiece();
       totalKg = totalKg + Double.parseDouble(ctnKgLt[2]);
@@ -759,6 +800,63 @@ public class OrderServiceImpl implements OrderService {
       warehouseList.add(SingleOrderWarehouse.from(orderDetails));
     }
     return OrderWarehouseResponse.from(warehouseList);
+  }
+
+  @Override
+  public DeleteResponse deleteOrderDetails(Long order, String product, String warehouse) {
+    Optional<OrderDetails> optionalOrderDetails = orderDetailsRepository.findByOrderAndProductAndWarehouse(
+            getOrder(order), getProduct(product), Warehouse.valueOf(warehouse));
+    if (optionalOrderDetails.isPresent()) {
+      optionalOrderDetails.get().setOrderStatus(Status.INACTIVE);
+      orderDetailsRepository.save(optionalOrderDetails.get());
+      updateImportDetails(optionalOrderDetails.get());
+      updateStockWhenDelete(optionalOrderDetails.get());
+      updateBill(optionalOrderDetails.get());
+      return DeleteResponse.from();
+    } else {
+      throw new RequestValidationException("Order details is not exist");
+    }
+  }
+
+  private void updateBill(OrderDetails orderDetails) {
+    Optional<OrderBills> optionalOrderBills = orderBillsRepository.findFirstByOrderOrderByCreatedOnDesc(
+            orderDetails.getOrder());
+    if (optionalOrderBills.isPresent()) {
+      optionalOrderBills.get().setDue(optionalOrderBills.get().getDue() - orderDetails.getTotalPrice());
+      optionalOrderBills.get().setSales(optionalOrderBills.get().getSales() - orderDetails.getTotalPrice());
+      orderBillsRepository.save(optionalOrderBills.get());
+    } else {
+      throw new RequestValidationException("Bill is not exist for this order id: " +
+              orderDetails.getOrder().getOrderId());
+    }
+  }
+
+  private void updateStockWhenDelete(OrderDetails orderDetails) {
+    Optional<Stock> optionalStock = stockRepository.findByProduct(orderDetails.getProduct());
+    if (optionalStock.isPresent()) {
+      optionalStock.get().setInStock(optionalStock.get().getInStock() + orderDetails.getQuantity());
+      optionalStock.get().setTotalSell(optionalStock.get().getTotalSell() - orderDetails.getQuantity());
+      stockRepository.save(optionalStock.get());
+    } else {
+      throw new RequestValidationException("Product is not found in stock");
+    }
+  }
+
+  private void updateImportDetails(OrderDetails orderDetails) {
+    Optional<ImportDetails> optionalImportDetails = importDetailsRepository.findByProductAndImportMasterAndWarehouse(orderDetails.getProduct(),
+            orderDetails.getShipment(), orderDetails.getWarehouse());
+    if (optionalImportDetails.isPresent()) {
+      if (orderDetails.getUom().equals(UOM.KG) || orderDetails.getUom().equals(UOM.LT)) {
+        optionalImportDetails.get().setKgLt(optionalImportDetails.get().getKgLt() + orderDetails.getQuantity());
+      } else if (orderDetails.getUom().equals(UOM.PIECE)) {
+        optionalImportDetails.get().setPiece(optionalImportDetails.get().getPiece() + orderDetails.getQuantity());
+      } else {
+        optionalImportDetails.get().setCartoon(optionalImportDetails.get().getCartoon() + orderDetails.getQuantity());
+      }
+      importDetailsRepository.save(optionalImportDetails.get());
+    } else {
+      throw new RequestValidationException("Import details is not found");
+    }
   }
 
   private Long getSerial() {
@@ -967,8 +1065,9 @@ public class OrderServiceImpl implements OrderService {
   }
 
   private void updateStockWhenEdit(OrderDetails orderDetails, EditOrderRequest request) {
-    Optional<ImportDetails> optionalImportDetails = importDetailsRepository.findByProductAndImportMaster(
-            orderDetails.getProduct(), getImportMaster(orderDetails.getShipment().getShipmentNo()));
+    Optional<ImportDetails> optionalImportDetails = importDetailsRepository.findByProductAndImportMasterAndWarehouse(
+            orderDetails.getProduct(), getImportMaster(orderDetails.getShipment().getShipmentNo()),
+            orderDetails.getWarehouse());
     if (optionalImportDetails.isPresent()) {
       UOM uom = UOM.fromName(optionalImportDetails.get().getUom().getName());
       if ((Objects.equals(uom, orderDetails.getUom())) && Objects.equals(uom, UOM.KG)) {
@@ -1102,5 +1201,15 @@ public class OrderServiceImpl implements OrderService {
 
   private User setUser(String user) {
     return null;
+  }
+
+  private String dateConversion(String date) {
+    DateTimeFormatter originalFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    LocalDate parsedDate = LocalDate.parse(date, originalFormatter);
+
+    // Format the LocalDate object using the new format "MM-dd-yyyy"
+    DateTimeFormatter newFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    System.out.println(parsedDate.format(newFormatter));
+    return parsedDate.format(newFormatter);
   }
 }

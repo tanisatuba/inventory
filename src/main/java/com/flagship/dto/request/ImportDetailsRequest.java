@@ -59,10 +59,10 @@ public class ImportDetailsRequest implements RequestValidator {
               " or BADC_COLD_STORAGE or Z_INNOVATIVE_TECHNOLOGYS or AZOMPUR_WAREHOUSE or BG_FOOD_AND_AGRO_LTD");
     }
     if ( production!= null && !production.isEmpty() && !Pattern.matches(String.valueOf(Regex.DATE_REGEX), production)) {
-      throw new RequestValidationException("Production Should be yyyy-MM-dd(1900-01-01)");
+      throw new RequestValidationException("Production Should be dd-MM-yyyy(01-01-1990)");
     }
     if (expire!= null && !expire.isEmpty() && !Pattern.matches(String.valueOf(Regex.DATE_REGEX), expire)) {
-      throw new RequestValidationException("Expire Should be yyyy-MM-dd(1900-01-01)");
+      throw new RequestValidationException("Expire Should be dd-MM-yyyy(01-01-1990)");
     }
   }
 }

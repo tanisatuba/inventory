@@ -16,6 +16,8 @@ import org.apache.hc.core5.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 @Service
@@ -37,7 +39,7 @@ public class AuthServiceImpl implements AuthService {
     user.setName(signUpRequest.getName());
     user.setEmail(signUpRequest.getEmail());
     user.setPassword(signUpRequest.getPassword());
-    user.setDateOfBirth(DateUtil.getZoneDateTime(signUpRequest.getDateOfBirth() + "T00:00:00"));
+    user.setDateOfBirth(DateUtil.getZoneDateTime(dateConversion(signUpRequest.getDateOfBirth()) + "T00:00:00"));
     user.setGender(Gender.fromName(signUpRequest.getGender().toString()));
     userRepository.save(user);
     return SignUpResponse.from("Sign up successful. You can login now.");
@@ -53,6 +55,14 @@ public class AuthServiceImpl implements AuthService {
     } else {
       throw new UserNotFoundException("User Name not Found");
     }
-    return LoginResponse.from("Login Success", user.get().getName(), user.get().getEmail());
+    return LoginResponse.from("Login Success", user.get());
+  }
+
+  private String dateConversion(String date) {
+    DateTimeFormatter originalFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    LocalDate parsedDate = LocalDate.parse(date, originalFormatter);
+    DateTimeFormatter newFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    System.out.println(parsedDate.format(newFormatter));
+    return parsedDate.format(newFormatter);
   }
 }

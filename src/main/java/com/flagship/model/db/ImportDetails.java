@@ -1,6 +1,7 @@
 package com.flagship.model.db;
 
 import com.flagship.constant.db.DbConstant.*;
+import com.flagship.constant.enums.Status;
 import com.flagship.constant.enums.UOM;
 import com.flagship.constant.enums.Warehouse;
 import lombok.*;
@@ -69,6 +70,10 @@ public class ImportDetails implements Serializable {
 
   @Column(name = DbImportDetails.KG_LT)
   private Double kgLt;
+
+  @Enumerated(value = EnumType.STRING)
+  @Column(name = DbImportDetails.STATUS, nullable = false)
+  private Status status;
 
   @Enumerated(value = EnumType.STRING)
   @Column(name = DbImportDetails.UOM, nullable = false)

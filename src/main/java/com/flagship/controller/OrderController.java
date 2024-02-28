@@ -37,8 +37,8 @@ public class OrderController {
           value = "/invoice",
           produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public ResponseEntity<ChallanResponse> getLastInvoice() {
-    ChallanResponse response = orderService.getLastInvoice();
+  public ResponseEntity<ChallanResponse> getLastInvoice(@RequestParam(value = "company") String company) {
+    ChallanResponse response = orderService.getLastInvoice(company);
     return new ResponseEntity<>(response, HttpStatus.OK);
   }
 
@@ -238,6 +238,15 @@ public class OrderController {
   public ResponseEntity<OrderWarehouseResponse> getWarehouse(@RequestParam(value = "product") String product,
                                                         @RequestParam(value = "order") Long order) {
     OrderWarehouseResponse response = orderService.getAllWarehouse(product, order);
+    return new ResponseEntity<>(response, HttpStatus.OK);
+  }
+  @DeleteMapping(
+          produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  public ResponseEntity<DeleteResponse> deleteOrderDetails(@RequestParam(value = "order") Long order,
+                                                             @RequestParam(value = "product") String product,
+                                                           @RequestParam(value = "warehouse") String warehouse) {
+    DeleteResponse response = orderService.deleteOrderDetails(order, product, warehouse);
     return new ResponseEntity<>(response, HttpStatus.OK);
   }
 }

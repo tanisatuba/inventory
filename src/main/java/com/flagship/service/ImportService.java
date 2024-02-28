@@ -20,4 +20,6 @@ public interface ImportService {
   WarehouseResponse getWarehouse(String product, String shipment);
 
   ImportResponse moveImport(List<MoveRequest> moveRequestList);
+
+  DeleteResponse deleteProduct(String product, String shipment, String warehouse);
 }

@@ -1,5 +1,6 @@
 package com.flagship.repository;
 
+import com.flagship.constant.enums.Status;
 import com.flagship.constant.enums.Warehouse;
 import com.flagship.model.db.*;
 import org.springframework.data.repository.PagingAndSortingRepository;
@@ -21,4 +22,6 @@ public interface ImportDetailsRepository extends PagingAndSortingRepository<Impo
 
   Optional<ImportDetails> findByProductAndImportMasterAndWarehouse(Product products, ImportMaster importMaster,
                                                                   Warehouse moveFrom);
+
+  List<ImportDetails> findByProductAndStatus(Product product, Status status);
 }

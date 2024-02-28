@@ -14,6 +14,7 @@ public class SingleImportResponse {
   private String shipmentNo;
   private String shipmentCountry;
   private String shipmentDate;
+  private String productId;
   private String product;
   private String category;
   private String brand;
@@ -33,6 +34,7 @@ public class SingleImportResponse {
             .shipmentNo(importMaster.getShipmentNo())
             .shipmentCountry(importMaster.getCountry().getCountryName())
             .shipmentDate(DateUtil.getFormattedDate(importMaster.getDate()))
+            .productId(importDetails.getProduct().getProductId())
             .product(importDetails.getProduct().getProductName())
             .category(importDetails.getCategories().getCategoryName())
             .brand(importDetails.getBrand().getBrandName())

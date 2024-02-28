@@ -55,4 +55,8 @@ public interface CommonService {
   SuccessReturnResponseUsingSerial getAllReturn();
 
   SuccessRequisitionResponseUsingSerial getAllRequisition();
+
+  GetAllCustomer getAllCustomer();
+
+  DeleteResponse deleteCustomer(String customerId);
 }

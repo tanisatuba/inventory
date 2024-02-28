@@ -1,9 +1,6 @@
 package com.flagship.service.impl;
 
-import com.flagship.constant.enums.Cause;
-import com.flagship.constant.enums.CustomerType;
-import com.flagship.constant.enums.UOM;
-import com.flagship.constant.enums.Warehouse;
+import com.flagship.constant.enums.*;
 import com.flagship.dto.request.*;
 import com.flagship.dto.response.*;
 import com.flagship.exception.RequestValidationException;
@@ -13,6 +10,7 @@ import com.flagship.service.CommonService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.persistence.EntityManager;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -37,6 +35,7 @@ public class CommonServiceImpl implements CommonService {
   private final ImportDetailsRepository importDetailsRepository;
   private final OrderDetailsRepository orderDetailsRepository;
   private final RequisitionRepository requisitionRepository;
+  private EntityManager entityManager;
 
   @Autowired
   public CommonServiceImpl(BrandRepository brandRepository, CountryRepository countryRepository,
@@ -247,7 +246,9 @@ public class CommonServiceImpl implements CommonService {
     List<Stock> stockList = (List<Stock>) stockRepository.findAll();
     List<StockResponse> stockResponseList = new ArrayList<>();
     for (Stock stock : stockList) {
-      stockResponseList.add(StockResponse.from(stock));
+      if (stock.getInStock() > 0) {
+        stockResponseList.add(StockResponse.from(stock));
+      }
     }
     return AllStockResponse.from(stockResponseList);
   }
@@ -326,6 +327,7 @@ public class CommonServiceImpl implements CommonService {
     customer.setBinNo(customerRequest.getBinNo());
     customer.setSupplier(!(customerRequest.getSupplier().isEmpty()) ? getSupplier(customerRequest.getSupplier()) : null);
     customer.setCreatedBy(user.get());
+    customer.setStatus(Status.ACTIVE);
     customerRepository.save(customer);
     return CustomerResponse.from("Customer added Successfully", customer);
   }
@@ -349,7 +351,9 @@ public class CommonServiceImpl implements CommonService {
     List<Customer> customerList = (List<Customer>) customerRepository.findAll();
     List<SingleCustomer> singleCustomers = new ArrayList<>();
     for (Customer customer : customerList) {
-      singleCustomers.add(SingleCustomer.from(customer));
+      if(customer.getStatus().equals(Status.ACTIVE)) {
+        singleCustomers.add(SingleCustomer.from(customer));
+      }
     }
     return GetAllCustomer.from(singleCustomers);
   }
@@ -435,15 +439,15 @@ public class CommonServiceImpl implements CommonService {
           wastage.setKgLt(wastageDetailsRequest.getQuantity());
         }
         if (wastageDetailsRequest.getUom().equals(UOM.PIECE)) {
-          wastage.setCartoon(wastageDetailsRequest.getQuantity());
-          wastage.setPiece((wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitPiece())
-                  / optionalImportDetails.get().getUnitPiece());
+          wastage.setCartoon((wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitPiece()) /
+                  optionalImportDetails.get().getUnitCartoon());
+          wastage.setPiece(wastageDetailsRequest.getQuantity());
           wastage.setKgLt(wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitPiece());
         }
         if (wastageDetailsRequest.getUom().equals(UOM.CARTOON)) {
-          wastage.setCartoon((wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitPiece())
-                  / optionalImportDetails.get().getUnitCartoon());
-          wastage.setPiece(wastageDetailsRequest.getQuantity());
+          wastage.setCartoon(wastageDetailsRequest.getQuantity());
+          wastage.setPiece((wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitCartoon())
+                  / optionalImportDetails.get().getUnitPiece());
           wastage.setKgLt(wastageDetailsRequest.getQuantity() * optionalImportDetails.get().getUnitPiece());
         }
         wastage.setCreatedBy(user.get());
@@ -544,15 +548,15 @@ public class CommonServiceImpl implements CommonService {
             returns.setKgLt(detailsRequest.getQuantity());
           }
           if (detailsRequest.getUom().equals(UOM.PIECE)) {
-            returns.setCartoon(detailsRequest.getQuantity());
-            returns.setPiece((detailsRequest.getQuantity() * importDetails.get().getUnitPiece())
-                    / importDetails.get().getUnitPiece());
+            returns.setCartoon((detailsRequest.getQuantity() * importDetails.get().getUnitPiece()) /
+                    importDetails.get().getUnitCartoon());
+            returns.setPiece(detailsRequest.getQuantity());
             returns.setKgLt(detailsRequest.getQuantity() * importDetails.get().getUnitPiece());
           }
           if (detailsRequest.getUom().equals(UOM.CARTOON)) {
-            returns.setCartoon((detailsRequest.getQuantity() * importDetails.get().getUnitPiece())
-                    / importDetails.get().getUnitCartoon());
-            returns.setPiece(detailsRequest.getQuantity());
+            returns.setCartoon(detailsRequest.getQuantity());
+            returns.setPiece((detailsRequest.getQuantity() * importDetails.get().getUnitCartoon())
+                    / importDetails.get().getUnitPiece());
             returns.setKgLt(detailsRequest.getQuantity() * importDetails.get().getUnitPiece());
           }
           returns.setCreatedBy(user.get());
@@ -578,9 +582,9 @@ public class CommonServiceImpl implements CommonService {
 
   private Customer getCustomerById(String customerId) {
     Optional<Customer> optionalCustomer = customerRepository.findByCustomerId(customerId);
-    if(optionalCustomer.isPresent()){
+    if (optionalCustomer.isPresent()) {
       return optionalCustomer.get();
-    }else{
+    } else {
       throw new RequestValidationException("Customer not found for this id: " + customerId);
     }
   }
@@ -617,27 +621,30 @@ public class CommonServiceImpl implements CommonService {
       Double totalBuyingPrice = 0.0;
       Double totalSellingPrice = 0.0;
       double revenue;
-      List<ImportDetails> importDetailsList = importDetailsRepository.findByProduct(product);
-      List<OrderDetails> orderDetailsList = orderDetailsRepository.findByProduct(product);
-      Optional<Stock> optionalStock = stockRepository.findByProduct(product);
-      if (optionalStock.isPresent() && optionalStock.get().getInStock() > 0.0) {
-        totalBuy = optionalStock.get().getTotalBuy();
-        totalSell = optionalStock.get().getTotalSell();
-        for (ImportDetails importDetails : importDetailsList) {
-          totalBuyingPrice = totalBuyingPrice + importDetails.getTotal();
+      List<ImportDetails> importDetailsList = importDetailsRepository.findByProductAndStatus(product,
+              Status.ACTIVE);
+      if (!importDetailsList.isEmpty()) {
+        List<OrderDetails> orderDetailsList = orderDetailsRepository.findByProduct(product);
+        Optional<Stock> optionalStock = stockRepository.findByProduct(product);
+        if (optionalStock.isPresent() && optionalStock.get().getInStock() > 0.0) {
+          totalBuy = optionalStock.get().getTotalBuy();
+          totalSell = optionalStock.get().getTotalSell();
+          for (ImportDetails importDetails : importDetailsList) {
+            totalBuyingPrice = totalBuyingPrice + importDetails.getTotal();
+          }
+          for (OrderDetails orderDetails : orderDetailsList) {
+            totalSellingPrice = totalSellingPrice + orderDetails.getTotalPrice();
+          }
+          averageBuyingPrice = totalBuy > 0 ? Double.parseDouble(decimalFormat.format(
+                  totalBuyingPrice / totalBuy)) : 0.0;
+          averageSellingPrice = totalSell > 0 ? Double.parseDouble(decimalFormat.format(
+                  totalSellingPrice / totalSell)) : 0.0;
+          revenue = Double.parseDouble(decimalFormat.format(averageBuyingPrice * optionalStock.get().getInStock()));
+          total = total + revenue;
+          singleProductRevenueResponses.add(SingleProductRevenueResponse.from(
+                  optionalStock.get().getProduct().getProductName(), totalBuy, totalSell, optionalStock.get().getInStock(),
+                  averageBuyingPrice, averageSellingPrice, totalBuyingPrice, totalSellingPrice, revenue));
         }
-        for (OrderDetails orderDetails : orderDetailsList) {
-          totalSellingPrice = totalSellingPrice + orderDetails.getTotalPrice();
-        }
-        averageBuyingPrice = totalBuy > 0 ? Double.parseDouble(decimalFormat.format(
-                totalBuyingPrice / totalBuy)) : 0.0;
-        averageSellingPrice = totalSell > 0 ? Double.parseDouble(decimalFormat.format(
-                totalSellingPrice / totalSell)) : 0.0;
-        revenue = Double.parseDouble(decimalFormat.format(averageBuyingPrice * optionalStock.get().getInStock()));
-        total = total + revenue;
-        singleProductRevenueResponses.add(SingleProductRevenueResponse.from(
-                optionalStock.get().getProduct().getProductName(), totalBuy, totalSell, optionalStock.get().getInStock(),
-                averageBuyingPrice, averageSellingPrice, totalBuyingPrice, totalSellingPrice, revenue));
       }
     }
     return AllProductRevenueResponse.from(singleProductRevenueResponses, total);
@@ -667,7 +674,7 @@ public class CommonServiceImpl implements CommonService {
     List<WastageResponseUsingSerial> wastageResponseUsingSerials = new ArrayList<>();
     HashMap<Long, Integer> commonIds = new HashMap<>();
     for (Wastage wastage : wastageList) {
-      if(commonIds.isEmpty() || !commonIds.containsKey(wastage.getSerialNo())) {
+      if (commonIds.isEmpty() || !commonIds.containsKey(wastage.getSerialNo())) {
         commonIds.put(wastage.getSerialNo(), 1);
         wastageResponseUsingSerials.add(WastageResponseUsingSerial.from(wastage));
       }
@@ -681,7 +688,7 @@ public class CommonServiceImpl implements CommonService {
     List<ReturnResponseUsingSerial> returnResponseUsingSerials = new ArrayList<>();
     HashMap<Long, Integer> commonIds = new HashMap<>();
     for (Returns returns : returnsList) {
-      if(commonIds.isEmpty() || !commonIds.containsKey(returns.getSerialNo())) {
+      if (commonIds.isEmpty() || !commonIds.containsKey(returns.getSerialNo())) {
         commonIds.put(returns.getSerialNo(), 1);
         returnResponseUsingSerials.add(ReturnResponseUsingSerial.from(returns));
       }
@@ -695,12 +702,36 @@ public class CommonServiceImpl implements CommonService {
     List<RequisitionResponseUsingSerial> requisitionResponseUsingSerials = new ArrayList<>();
     HashMap<Long, Integer> commonIds = new HashMap<>();
     for (Requisition requisition : requisitionList) {
-      if(commonIds.isEmpty() || !commonIds.containsKey(requisition.getSerialNo())) {
+      if (commonIds.isEmpty() || !commonIds.containsKey(requisition.getSerialNo())) {
         commonIds.put(requisition.getSerialNo(), 1);
         requisitionResponseUsingSerials.add(RequisitionResponseUsingSerial.from(requisition));
       }
     }
     return SuccessRequisitionResponseUsingSerial.from(requisitionResponseUsingSerials);
+  }
+
+  @Override
+  public GetAllCustomer getAllCustomer() {
+    List<Customer> customerList = (List<Customer>) customerRepository.findAll();
+    List<SingleCustomer> singleCustomers = new ArrayList<>();
+    for (Customer customer : customerList) {
+      if(customer.getStatus().equals(Status.ACTIVE)) {
+        singleCustomers.add(SingleCustomer.from(customer));
+      }
+    }
+    return GetAllCustomer.from(singleCustomers);
+  }
+
+  @Override
+  public DeleteResponse deleteCustomer(String customerId) {
+    Optional<Customer> optionalCustomer = customerRepository.findByCustomerId(customerId);
+    if (optionalCustomer.isPresent()) {
+      optionalCustomer.get().setStatus(Status.INACTIVE);
+      customerRepository.save(optionalCustomer.get());
+      return DeleteResponse.from();
+    } else {
+      throw new RequestValidationException("Customer not exist");
+    }
   }
 
   private OrderMaster getOrderId(Long order) {

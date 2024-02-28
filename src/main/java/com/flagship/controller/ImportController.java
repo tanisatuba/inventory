@@ -85,4 +85,14 @@ public class ImportController {
     ImportResponse response = importService.moveImport(moveRequestList);
     return new ResponseEntity<>(response, HttpStatus.OK);
   }
+
+  @DeleteMapping(
+          produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  public ResponseEntity<DeleteResponse> deleteProduct(@RequestParam(value = "product") String product,
+                                                      @RequestParam(value = "shipment") String shipment,
+                                                      @RequestParam(value = "warehouse") String warehouse) {
+    DeleteResponse response = importService.deleteProduct(product, shipment, warehouse);
+    return new ResponseEntity<>(response, HttpStatus.OK);
+  }
 }

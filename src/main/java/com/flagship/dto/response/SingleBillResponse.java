@@ -13,6 +13,7 @@ public class SingleBillResponse {
   private String customer;
   private String supplier;
   private String orderDate;
+  private String deliveryDate;
   private String company;
   private String address;
   private String delivery;
@@ -26,14 +27,11 @@ public class SingleBillResponse {
 
   public static SingleBillResponse from(OrderMaster orderMaster, Double sales, Double due) {
     SingleBillResponse.SingleBillResponseBuilder builder = SingleBillResponse.builder()
-            .customerId(orderMaster.getCustomer().getCustomerId())
-            .customer(orderMaster.getCustomer().getCustomerName())
             .orderId(orderMaster.getOrderId())
             .orderDate(DateUtil.getFormattedDate(orderMaster.getOrderDate()))
+            .deliveryDate(DateUtil.getFormattedDate(orderMaster.getDeliveryDate()))
             .company(orderMaster.getCompanyName())
-            .address(orderMaster.getCustomer().getAddress())
-            .delivery(orderMaster.getBranch().getBranchName() +"/" + orderMaster.getAddress()) 
-            .bin(orderMaster.getCustomer().getBinNo())
+            .delivery(orderMaster.getBranch().getBranchName() +"/" + orderMaster.getAddress())
             .challan(orderMaster.getChallan())
             .sales(sales)
             .due(due)
@@ -43,12 +41,23 @@ public class SingleBillResponse {
     } else {
       builder.supplier(null);
     }
-    if (orderMaster.getBranch() != null) {
+    if (orderMaster.getBranch() != null && orderMaster.getCustomer() != null) {
       builder.branch(orderMaster.getBranch().getBranchName());
       builder.billTo(orderMaster.getCustomer().getCompany() + "/" + orderMaster.getBranch().getBranchName());
     } else {
       builder.branch(null);
-      builder.billTo(orderMaster.getCustomer().getCompany() + "/" + null);
+      builder.billTo(null);
+    }
+    if(orderMaster.getCustomer() != null){
+      builder.customerId(orderMaster.getCustomer().getCustomerId());
+      builder.customer(orderMaster.getCustomer().getCustomerName());
+      builder.address(orderMaster.getCustomer().getAddress());
+      builder.bin(orderMaster.getCustomer().getBinNo());
+    }else {
+      builder.customerId(null);
+      builder.customer(null);
+      builder.address(null);
+      builder.bin(null);
     }
     return builder.build();
   }

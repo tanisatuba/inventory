@@ -246,4 +246,20 @@ public class CommonController {
     SuccessRequisitionResponseUsingSerial response = commonService.getAllRequisition();
     return new ResponseEntity<>(response, HttpStatus.OK);
   }
+  @GetMapping(
+          value = "/all/customer",
+          produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  public ResponseEntity<GetAllCustomer> getAllCustomer() {
+    GetAllCustomer response = commonService.getAllCustomer();
+    return new ResponseEntity<>(response, HttpStatus.OK);
+  }
+  @DeleteMapping(
+          value = "/customer",
+          produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  public ResponseEntity<DeleteResponse> deleteCustomer(@RequestParam(value = "id") String customerId) {
+    DeleteResponse response = commonService.deleteCustomer(customerId);
+    return new ResponseEntity<>(response, HttpStatus.OK);
+  }
 }

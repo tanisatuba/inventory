@@ -34,7 +34,7 @@ public class ImportRequest implements RequestValidator {
   @Override
   public void validate() {
     if (!Pattern.matches(String.valueOf(Regex.DATE_REGEX), date)) {
-      throw new RequestValidationException("Date Should be yyyy-MM-dd(1900-01-01)");
+      throw new RequestValidationException("Date Should be dd-MM-yyyy(01-01-1990)");
     }
   }
 }

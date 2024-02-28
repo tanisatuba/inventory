@@ -78,6 +78,7 @@ public class DbConstant {
     public static final String UOM = "uom";
     public static final String UNIT_PRICE = "price";
     public static final String TOTAL_PRICE = "total";
+    public static final String STATUS = "status";
   }
 
   public static class DbImportMaster extends DbCommon {
@@ -98,6 +99,7 @@ public class DbConstant {
     public static final String ADDRESS = "address";
     public static final String BIN_NO = "bin_no";
     public static final String CREDIT_TERM = "credit";
+    public static final String STATUS = "status";
   }
 
   public static class DbSupplier extends DbCommon {
@@ -143,6 +145,7 @@ public class DbConstant {
     public static final String CHALLAN = "challan";
     public static final String ADDRESS = "address";
     public static final String ORDER_BY = "order_by";
+    public static final String CHALLAN_COMPANY = "challan_company";
   }
 
   public static class DbOrderDetails extends DbCommon {
@@ -160,6 +163,7 @@ public class DbConstant {
     public static final String TOTAL_PRICE = "total";
     public static final String ORDER_STATUS = "status";
     public static final String WAREHOUSE = "warehouse";
+    public static final String STATUS = "order_status";
   }
   public static class DbOrderBills extends DbCommon {
     public static final String TABLE_NAME = "order_bills";

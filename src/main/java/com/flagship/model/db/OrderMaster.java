@@ -1,6 +1,7 @@
 package com.flagship.model.db;
 
 import com.flagship.constant.db.DbConstant.*;
+import com.flagship.constant.enums.ChallanCompany;
 import com.flagship.constant.enums.CustomerType;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -54,7 +55,11 @@ public class OrderMaster implements Serializable {
   @Column(name = DbOrderMaster.CREDIT_TERM)
   private Integer creditTerm;
 
-  @Column(name = DbOrderMaster.CHALLAN, nullable = false)
+  @Enumerated(EnumType.STRING)
+  @Column(name = DbOrderMaster.CHALLAN_COMPANY)
+  private ChallanCompany challanCompany;
+
+  @Column(name = DbOrderMaster.CHALLAN)
   private Integer challan;
 
   @Column(name = DbOrderMaster.ADDRESS, nullable = false)
