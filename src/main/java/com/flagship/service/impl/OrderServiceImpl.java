@@ -86,7 +86,7 @@ public class OrderServiceImpl implements OrderService {
     orderMaster.setAddress(orderMasterRequest.getAddress());
     orderMaster.setOrderBy(getSalesPerson(orderMasterRequest.getOrderBy().getValue()));
     orderMaster.setCreatedBy(getUser(orderMasterRequest.getUser()));
-    orderMaster.setChallanCompany(orderMaster.getChallanCompany() != null ? ChallanCompany.fromName(
+    orderMaster.setChallanCompany(orderMasterRequest.getChallanCompany() != null ? ChallanCompany.fromName(
             orderMasterRequest.getChallanCompany().getName()) : null);
     OrderMaster master = orderMasterRepository.save(orderMaster);
     List<OrderDetailsResponse> orderDetailsResponses = addOrderDetails(master, orderDetailsRequestList);
